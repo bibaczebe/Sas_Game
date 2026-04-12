@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+.vite/
+
+# Environment files (secrets — never commit)
+.env
+.env.local
+.env.production
+server/.env
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/settings.json
+.idea/
+
+# Raw zip archives (extracted files already committed)
+*.zip
+*.rar
+*.7z
+
+# Temporary files
+*.tmp
+*.temp
+
+# Generated sprites (committed as-is from pixellab)
+# — NOT ignored, colleague needs them

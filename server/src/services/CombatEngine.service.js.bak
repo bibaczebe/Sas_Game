@@ -1,0 +1,432 @@
+/**
+ * CombatEngine.service.js
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Server-authoritative turn-based combat resolver.
+ *
+ * FORMULA OVERVIEW
+ * ────────────────
+ * Attack Power  = STR×2 + weaponDamage + level
+ * Hit Roll      = uniform(0,1) < clamp(actionHit + agiDelta×0.02, 0.15, 0.99)
+ * agiDelta      = attackerAGI − defenderAGI
+ * Crit Chance   = clamp(attackerAGI × 0.005, 0, 0.50)   → 0.5% per AGI point
+ * Raw Damage    = attackPower × actionMult × uniform(0.85, 1.15)
+ *                 × (1.75 if crit) × (1.50 if charged) × (1.0 − tauntReduction)
+ * Defense       = defenderAGI × 0.5 + armorRating
+ * Final Damage  = max(1, floor(rawDamage − defense × 0.40))
+ *
+ * STAMINA
+ * ───────
+ * Every turn: +10 regen (capped at 100) BEFORE the action cost is applied.
+ * If stamina < action cost, action is rejected with an error.
+ *
+ * STATES
+ * ──────
+ * charged  – set by Charge action; consumed on next offensive action (+50% dmg)
+ * taunted  – set on enemy by Taunt; forces it to use normal_attack next turn
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
+const { v4: uuidv4 } = require('uuid');
+const { ACTION_TYPES, ACTION_STAMINA_COST, STAMINA_REGEN_PER_TURN } = require('../config/constants');
+
+// ── Action definitions ────────────────────────────────────────────────────────
+const ACTION_DEFS = {
+  [ACTION_TYPES.CHARGE]: {
+    baseHit:    1.00, // always "connects" (applies buff, no damage)
+    damageMult: 0.00,
+    setsState:  'charged',
+    description: 'Channels power for the next strike.',
+  },
+  [ACTION_TYPES.QUICK_ATTACK]: {
+    baseHit:    0.95,
+    damageMult: 0.70, // 70% damage — fast but light
+    setsState:  null,
+    description: 'A swift strike that rarely misses.',
+  },
+  [ACTION_TYPES.NORMAL_ATTACK]: {
+    baseHit:    0.80,
+    damageMult: 1.00,
+    setsState:  null,
+    description: 'A balanced, reliable attack.',
+  },
+  [ACTION_TYPES.POWER_ATTACK]: {
+    baseHit:    0.55, // risky — only 55% base
+    damageMult: 1.75, // but hits HARD
+    setsState:  null,
+    description: 'A devastating blow that can miss.',
+  },
+  [ACTION_TYPES.TAUNT]: {
+    baseHit:    1.00,
+    damageMult: 0.00, // no damage — defensive
+    setsState:  'taunted_enemy',
+    defenseBonus: 0.35, // 35% incoming damage reduction this round
+    description: 'Rattles the enemy, forcing a weak attack while defending.',
+  },
+};
+
+// ── In-memory session store ───────────────────────────────────────────────────
+const sessions = new Map(); // sessionId → CombatSession
+
+// ── Enemy templates (used for PvE spawns) ────────────────────────────────────
+const ENEMY_TEMPLATES = {
+  goblin_scout: {
+    name: 'Goblin Scout',
+    level: 1, maxHP: 60, attackPower: 8, defense: 2, agility: 6,
+    xpReward: 35, goldReward: 12,
+  },
+  skeleton_guard: {
+    name: 'Skeleton Guard',
+    level: 2, maxHP: 90, attackPower: 14, defense: 5, agility: 4,
+    xpReward: 60, goldReward: 22,
+  },
+  orc_warrior: {
+    name: 'Orc Warrior',
+    level: 3, maxHP: 130, attackPower: 20, defense: 8, agility: 3,
+    xpReward: 100, goldReward: 40,
+  },
+  dark_mage: {
+    name: 'Dark Mage',
+    level: 4, maxHP: 100, attackPower: 28, defense: 3, agility: 9,
+    xpReward: 140, goldReward: 60,
+  },
+  dragon_hatchling: {
+    name: 'Dragon Hatchling',
+    level: 5, maxHP: 200, attackPower: 35, defense: 14, agility: 7,
+    xpReward: 250, goldReward: 120,
+  },
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function rand()        { return Math.random(); }
+function randRange(lo, hi) { return lo + rand() * (hi - lo); }
+function clamp(v, lo, hi)  { return Math.max(lo, Math.min(hi, v)); }
+
+function weightedChoice(weights) {
+  // weights: { action: number, ... }
+  const total = Object.values(weights).reduce((a, b) => a + b, 0);
+  let r = rand() * total;
+  for (const [key, w] of Object.entries(weights)) {
+    r -= w;
+    if (r <= 0) return key;
+  }
+  return Object.keys(weights)[0];
+}
+
+// ── Enemy AI action selection ─────────────────────────────────────────────────
+function selectEnemyAction(enemy) {
+  // If taunted, forced to normal attack
+  if (enemy.state === 'taunted') return ACTION_TYPES.NORMAL_ATTACK;
+
+  const hpRatio = enemy.currentHP / enemy.maxHP;
+  let weights;
+
+  if (hpRatio > 0.65) {
+    // Aggressive opening phase
+    weights = {
+      [ACTION_TYPES.CHARGE]:        25,
+      [ACTION_TYPES.NORMAL_ATTACK]: 30,
+      [ACTION_TYPES.POWER_ATTACK]:  22,
+      [ACTION_TYPES.QUICK_ATTACK]:  18,
+      [ACTION_TYPES.TAUNT]:          5,
+    };
+  } else if (hpRatio > 0.30) {
+    // Balanced mid-fight
+    weights = {
+      [ACTION_TYPES.CHARGE]:        12,
+      [ACTION_TYPES.NORMAL_ATTACK]: 35,
+      [ACTION_TYPES.POWER_ATTACK]:  15,
+      [ACTION_TYPES.QUICK_ATTACK]:  33,
+      [ACTION_TYPES.TAUNT]:          5,
+    };
+  } else {
+    // Desperate — spam fast / power
+    weights = {
+      [ACTION_TYPES.CHARGE]:         5,
+      [ACTION_TYPES.NORMAL_ATTACK]: 18,
+      [ACTION_TYPES.POWER_ATTACK]:  35,
+      [ACTION_TYPES.QUICK_ATTACK]:  40,
+      [ACTION_TYPES.TAUNT]:          2,
+    };
+  }
+
+  // Enemy can't afford the action → downgrade
+  const chosen = weightedChoice(weights);
+  const cost = ACTION_STAMINA_COST[chosen] || 0;
+  if (enemy.stamina < cost) {
+    return ACTION_TYPES.QUICK_ATTACK; // always free
+  }
+
+  return chosen;
+}
+
+// ── Attack resolution ─────────────────────────────────────────────────────────
+/**
+ * Resolve one combatant attacking another.
+ * Returns { hit, crit, damage, state } and modifies attacker/defender IN PLACE.
+ */
+function resolveAttack(attacker, defender, actionKey) {
+  const def    = ACTION_DEFS[actionKey];
+  const result = { action: actionKey, hit: false, crit: false, damage: 0, effect: null };
+
+  if (!def) return result;
+
+  // — Charge: apply state, no damage —
+  if (actionKey === ACTION_TYPES.CHARGE) {
+    attacker.state = 'charged';
+    result.hit     = true;
+    result.effect  = 'charged';
+    return result;
+  }
+
+  // — Taunt: apply defense buff to attacker, taunted to defender —
+  if (actionKey === ACTION_TYPES.TAUNT) {
+    attacker.taunting = true; // checked during enemy's incoming attack this round
+    defender.state    = 'taunted';
+    result.hit        = true;
+    result.effect     = 'taunt';
+    return result;
+  }
+
+  // — Offensive action —
+
+  // Hit chance
+  const agiDelta  = (attacker.agility || 5) - (defender.agility || 5);
+  const hitChance = clamp(def.baseHit + agiDelta * 0.02, 0.15, 0.99);
+  result.hit      = rand() < hitChance;
+
+  if (!result.hit) return result;
+
+  // Crit
+  const critChance = clamp((attacker.agility || 5) * 0.005, 0, 0.50);
+  result.crit      = rand() < critChance;
+
+  // Damage
+  let mult = def.damageMult;
+
+  // Consume charged state for +50% bonus
+  if (attacker.state === 'charged') {
+    mult          += 0.50;
+    attacker.state = null;
+    result.effect  = 'charged_consumed';
+  }
+
+  const attackPower = attacker.attackPower || 10;
+  let raw = attackPower * mult * randRange(0.85, 1.15);
+
+  if (result.crit) raw *= 1.75;
+
+  // Taunt defence reduction (only if DEFENDER was taunting this round)
+  if (defender.taunting) raw *= (1 - ACTION_DEFS[ACTION_TYPES.TAUNT].defenseBonus);
+
+  const defense    = (defender.agility || 5) * 0.5 + (defender.defense || 0);
+  result.damage    = Math.max(1, Math.floor(raw - defense * 0.40));
+
+  defender.currentHP = Math.max(0, defender.currentHP - result.damage);
+
+  return result;
+}
+
+// ── Session lifecycle ─────────────────────────────────────────────────────────
+function createSession(character, enemyKey) {
+  const template = ENEMY_TEMPLATES[enemyKey] || ENEMY_TEMPLATES.goblin_scout;
+
+  const player = {
+    characterId:  character._id.toString(),
+    name:         character.name,
+    currentHP:    character.currentHP,
+    maxHP:        character.maxHP,
+    stamina:      character.currentStamina,
+    maxStamina:   100,
+    attackPower:  character.baseStats.strength * 2 + character.level,
+    agility:      character.baseStats.agility,
+    defense:      Math.floor(character.baseStats.agility * 0.5),
+    state:        null,
+    taunting:     false,
+  };
+
+  const enemy = {
+    ...template,
+    currentHP: template.maxHP,
+    stamina:   100,
+    state:     null,
+    taunting:  false,
+  };
+
+  const session = {
+    id:      uuidv4(),
+    player,
+    enemy,
+    turn:    1,
+    log:     [],
+    status:  'active', // 'active' | 'player_won' | 'enemy_won'
+  };
+
+  sessions.set(session.id, session);
+  return session;
+}
+
+function getSession(sessionId) {
+  return sessions.get(sessionId) || null;
+}
+
+function endSession(sessionId) {
+  sessions.delete(sessionId);
+}
+
+// ── Main round processor ──────────────────────────────────────────────────────
+/**
+ * Process one full round: player acts, enemy responds, stamina regens.
+ * Returns a RoundResult object; throws on invalid action.
+ */
+function processRound(sessionId, playerAction) {
+  const session = sessions.get(sessionId);
+  if (!session)                   throw new Error('Combat session not found');
+  if (session.status !== 'active') throw new Error('Combat is already over');
+
+  const { player, enemy } = session;
+
+  // Validate action
+  if (!ACTION_DEFS[playerAction]) throw new Error(`Unknown action: ${playerAction}`);
+
+  // Stamina regen (beginning of turn, before cost)
+  player.stamina = Math.min(player.maxStamina, player.stamina + STAMINA_REGEN_PER_TURN);
+  enemy.stamina  = Math.min(enemy.maxStamina,  enemy.stamina  + STAMINA_REGEN_PER_TURN);
+
+  // Stamina cost check
+  const playerCost = ACTION_STAMINA_COST[playerAction] || 0;
+  if (player.stamina < playerCost) {
+    throw new Error(`Not enough stamina (need ${playerCost}, have ${player.stamina})`);
+  }
+  player.stamina -= playerCost;
+
+  // Reset taunting flag
+  player.taunting = false;
+  enemy.taunting  = false;
+
+  // Enemy selects action
+  const enemyAction     = selectEnemyAction(enemy);
+  const enemyActionCost = ACTION_STAMINA_COST[enemyAction] || 0;
+  enemy.stamina = Math.max(0, enemy.stamina - enemyActionCost);
+
+  // Resolve player → enemy
+  const playerResult = resolveAttack(player, enemy, playerAction);
+
+  // Resolve enemy → player (only if enemy still alive)
+  let enemyResult = { action: enemyAction, hit: false, damage: 0 };
+  if (enemy.currentHP > 0) {
+    enemyResult = resolveAttack(enemy, player, enemyAction);
+  }
+
+  // Consume taunted state
+  if (enemy.state === 'taunted') enemy.state = null;
+  if (player.state === 'taunted') player.state = null;
+
+  // Check win conditions
+  if (enemy.currentHP <= 0)  session.status = 'player_won';
+  else if (player.currentHP <= 0) session.status = 'enemy_won';
+
+  session.turn++;
+
+  const roundResult = {
+    turn:          session.turn - 1,
+    sessionStatus: session.status,
+    playerAction: {
+      type:    playerAction,
+      ...playerResult,
+      staminaAfter: player.stamina,
+    },
+    enemyAction: {
+      type:    enemyAction,
+      ...enemyResult,
+      staminaAfter: enemy.stamina,
+    },
+    playerHP:    { current: player.currentHP, max: player.maxHP },
+    enemyHP:     { current: enemy.currentHP,  max: enemy.maxHP },
+    playerStamina: player.stamina,
+    enemyStamina:  enemy.stamina,
+    reward: null,
+  };
+
+  // Attach reward on player victory
+  if (session.status === 'player_won') {
+    roundResult.reward = {
+      xp:   session.enemy.xpReward,
+      gold: session.enemy.goldReward,
+    };
+    endSession(sessionId);
+  } else if (session.status === 'enemy_won') {
+    endSession(sessionId);
+  }
+
+  return roundResult;
+}
+
+// ── Simulation (for testing / example fights) ─────────────────────────────────
+/**
+ * Run a simulated fight between a mock character and an enemy.
+ * Returns the full fight log.
+ */
+function simulateFight(characterStats, enemyKey, maxRounds = 50) {
+  const mockChar = {
+    _id:          { toString: () => 'sim_player' },
+    name:         characterStats.name || 'Simulator',
+    currentHP:    characterStats.maxHP,
+    maxHP:        characterStats.maxHP,
+    currentStamina: 100,
+    level:        characterStats.level || 1,
+    baseStats: {
+      strength:  characterStats.strength || 8,
+      agility:   characterStats.agility  || 5,
+      endurance: characterStats.endurance|| 8,
+    },
+  };
+  mockChar.maxHP = Math.floor(mockChar.baseStats.endurance * 10 + mockChar.level * 5 + 50);
+  mockChar.currentHP = mockChar.maxHP;
+
+  const session = createSession(mockChar, enemyKey);
+  const log = [];
+
+  const PLAYER_STRATEGY = [
+    ACTION_TYPES.CHARGE,
+    ACTION_TYPES.POWER_ATTACK,
+    ACTION_TYPES.NORMAL_ATTACK,
+    ACTION_TYPES.QUICK_ATTACK,
+    ACTION_TYPES.NORMAL_ATTACK,
+  ];
+
+  for (let round = 0; round < maxRounds; round++) {
+    const s = sessions.get(session.id);
+    if (!s || s.status !== 'active') break;
+
+    const action = PLAYER_STRATEGY[round % PLAYER_STRATEGY.length];
+    try {
+      const result = processRound(session.id, action);
+      log.push({
+        turn:    result.turn,
+        player:  `[${action}] ${result.playerAction.hit ? `hit for ${result.playerAction.damage}` : 'MISS'} ${result.playerAction.effect ? `(${result.playerAction.effect})` : ''}`,
+        enemy:   `[${result.enemyAction.type}] ${result.enemyAction.hit ? `hit for ${result.enemyAction.damage}` : 'MISS'}`,
+        hpAfter: `Player ${result.playerHP.current}/${result.playerHP.max}  Enemy ${result.enemyHP.current}/${result.enemyHP.max}`,
+        status:  result.sessionStatus,
+      });
+      if (result.sessionStatus !== 'active') {
+        log.push({ result: result.sessionStatus, reward: result.reward });
+        break;
+      }
+    } catch (err) {
+      log.push({ error: err.message });
+    }
+  }
+
+  endSession(session.id);
+  return log;
+}
+
+module.exports = {
+  ACTION_DEFS,
+  ENEMY_TEMPLATES,
+  createSession,
+  getSession,
+  endSession,
+  processRound,
+  simulateFight,
+};
