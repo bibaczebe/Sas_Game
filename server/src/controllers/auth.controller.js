@@ -53,7 +53,8 @@ async function register(req, res, next) {
     await User.findByIdAndUpdate(user._id, { refreshTokenHash });
 
     res.cookie('refreshToken', refreshToken, COOKIE_OPTS);
-    res.status(201).json({ accessToken, user: userPayload(user) });
+    // Also return refreshToken in body so native clients (Godot) can store it
+    res.status(201).json({ accessToken, refreshToken, user: userPayload(user) });
   } catch (err) {
     next(err);
   }
@@ -88,7 +89,8 @@ async function login(req, res, next) {
     await User.findByIdAndUpdate(user._id, { refreshTokenHash, lastLogin: new Date() });
 
     res.cookie('refreshToken', refreshToken, COOKIE_OPTS);
-    res.json({ accessToken, user: userPayload(user) });
+    // Also return refreshToken in body so native clients (Godot) can store it
+    res.json({ accessToken, refreshToken, user: userPayload(user) });
   } catch (err) {
     next(err);
   }
@@ -97,7 +99,8 @@ async function login(req, res, next) {
 // POST /api/auth/refresh
 async function refresh(req, res, next) {
   try {
-    const token = req.cookies.refreshToken;
+    // Accept token from cookie (browser) OR from request body (native clients like Godot)
+    const token = req.cookies.refreshToken || req.body?.refreshToken;
     if (!token) return res.status(401).json({ error: 'No refresh token' });
 
     let payload;

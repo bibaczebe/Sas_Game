@@ -11,8 +11,12 @@ async function start() {
   const httpServer = http.createServer(app);
 
   // Attach Socket.io
-  const { initSockets } = require('./src/sockets');
+  const { initSockets, getIO } = require('./src/sockets');
   initSockets(httpServer);
+
+  // Plain WebSocket bridge for Godot clients (ws://localhost:PORT/ws)
+  const { initWsBridge } = require('./src/sockets/ws_bridge');
+  initWsBridge(httpServer, getIO);
 
   httpServer.listen(PORT, () => {
     console.log(`\n⚔️  SaS Game Server running on http://localhost:${PORT}`);

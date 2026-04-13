@@ -7,6 +7,8 @@ const characterRoutes = require('./routes/character.routes');
 const inventoryRoutes = require('./routes/inventory.routes');
 const questRoutes      = require('./routes/quest.routes');
 const expeditionRoutes = require('./routes/expedition.routes');
+const chatRoutes       = require('./routes/chat.routes');
+const combatRoutes     = require('./routes/combat.routes');
 const errorHandler     = require('./middleware/errorHandler.middleware');
 
 function createApp() {
@@ -25,6 +27,8 @@ function createApp() {
   app.use('/api/inventory', inventoryRoutes);
   app.use('/api/quests',      questRoutes);
   app.use('/api/expeditions', expeditionRoutes);
+  app.use('/api/chat',        chatRoutes);
+  app.use('/api/combat',      combatRoutes);
 
   app.use(errorHandler);
 
