@@ -1,11 +1,16 @@
 /**
  * convert-rpgmz-map.js
- * Converts an RPG Maker MZ Map JSON to a Godot-compatible atlas index file.
+ * Converts an RPG Maker MZ Map JSON to a Godot-compatible autotile file.
  *
- * Encoding (one byte per tile, flat array, row-major):
- *   0–31  → A2 atlas tile (kind = index, atlas_col = kind%8, atlas_row = kind/8)
- *   32    → Water / A1 tile  → atlas Vector2i(0, 4)
- *   255   → Empty (no tile placed)
+ * Encoding (one int per tile, flat array, row-major):
+ *   0–1535  → A2 autotile: packed = (kind * 48 + shape)
+ *             kind  = packed / 48   (0–31, which tile type)
+ *             shape = packed % 48   (0–47, which autotile configuration)
+ *   65534   → Water / A1 tile
+ *   65535   → Empty (no tile placed)
+ *
+ * Godot renders each tile by compositing 4×24×24 quadrants from Outside_A2.png
+ * using FLOOR_AUTOTILE_TABLE (ported from RPG Maker MZ rmmz_core.js).
  *
  * Input:  Documents/RPGMaker Projects/SaS_Plains/data/Map001.json
  * Output: <Godot project>/assets/maps/plains_biome.json
@@ -26,24 +31,34 @@ const MAP_OUT = path.join(
   'assets/maps/plains_biome.json'
 );
 
-// ── Tile ID → atlas index ─────────────────────────────────────────────────────
-function tileToAtlas(id) {
-  if (id === 0) return 255;                       // empty cell
+const TILE_A1_START = 2048;
+const TILE_A2_START = 2816;
+const TILE_A3_START = 4352;
+
+const EMPTY = 65535;
+const WATER = 65534;
+
+// ── Tile ID → packed int ──────────────────────────────────────────────────────
+function tileToPacked(id) {
+  if (id === 0) return EMPTY;
 
   // A1 animated tiles (water) — 2048–2815
-  if (id >= 2048 && id < 2816) return 32;         // → atlas(0,4)
+  if (id >= TILE_A1_START && id < TILE_A2_START) return WATER;
 
   // A2 autotiles — 2816–4351
-  if (id >= 2816 && id < 4352) {
-    const kind = Math.floor((id - 2816) / 48);
-    if (kind >= 0 && kind <= 31) return kind;     // 0–31 maps directly
+  if (id >= TILE_A2_START && id < TILE_A3_START) {
+    // kind relative to A2 base (0–31), shape (0–47)
+    const offset = id - TILE_A2_START;   // 0 – 1535
+    const kind   = Math.floor(offset / 48);
+    const shape  = offset % 48;
+    if (kind >= 0 && kind <= 31) return kind * 48 + shape;
   }
 
-  // B/C decoration tiles (≥ 4352) — skip (layer 1+, not in our atlas)
-  return 255;
+  // B/C/other decoration tiles — skip
+  return EMPTY;
 }
 
-// ── Atlas index → description (for stats) ────────────────────────────────────
+// ── Kind name lookup (for stats) ─────────────────────────────────────────────
 const A2_NAMES = [
   'Grassland A','Grassland Dark','Grassland B','Grassland B Dark',
   'Forest','Forest Fir','Mountain Grass','Mountain Dirt',
@@ -66,33 +81,41 @@ const mapData = JSON.parse(fs.readFileSync(MAP_IN, 'utf8'));
 const W = mapData.width, H = mapData.height;
 console.log(`Map dimensions: ${W}×${H} tiles`);
 
-// Extract layer 0 (ground layer — indices 0 to W*H-1)
+// Extract layer 0 (ground layer)
 const layer0 = mapData.data.slice(0, W * H);
-
-// Convert to atlas indices
-const tiles = layer0.map(tileToAtlas);
+const tiles  = layer0.map(tileToPacked);
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
-const freq = {};
-for (const v of tiles) freq[v] = (freq[v] || 0) + 1;
-const empty = freq[255] || 0;
-const water = freq[32]  || 0;
-const placed = W * H - empty;
+const kindFreq = {};
+let emptyCount = 0, waterCount = 0;
 
+for (const v of tiles) {
+  if (v === EMPTY) { emptyCount++; continue; }
+  if (v === WATER) { waterCount++; continue; }
+  const kind = Math.floor(v / 48);
+  kindFreq[kind] = (kindFreq[kind] || 0) + 1;
+}
+
+const placed = W * H - emptyCount;
 console.log(`\nTile stats:`);
 console.log(`  Total cells : ${(W * H).toLocaleString()}`);
 console.log(`  Placed      : ${placed.toLocaleString()}`);
-console.log(`  Empty       : ${empty.toLocaleString()}`);
-console.log(`  Water (A1)  : ${water.toLocaleString()}`);
-console.log(`\n  A2 tile breakdown (by kind):`);
-Object.entries(freq)
-  .filter(([k]) => +k < 32)
+console.log(`  Empty       : ${emptyCount.toLocaleString()}`);
+console.log(`  Water (A1)  : ${waterCount.toLocaleString()}`);
+console.log(`\n  A2 tile kinds used:`);
+Object.entries(kindFreq)
   .sort((a, b) => b[1] - a[1])
-  .slice(0, 15)
   .forEach(([k, cnt]) => {
     const name = A2_NAMES[+k] || 'unknown';
     console.log(`    kind ${String(k).padStart(2)} "${name.padEnd(20)}"  ${cnt.toLocaleString()} tiles`);
   });
+
+// Unique (kind, shape) pairs
+const uniquePairs = new Set();
+for (const v of tiles) {
+  if (v !== EMPTY && v !== WATER) uniquePairs.add(v);
+}
+console.log(`\n  Unique autotile variants : ${uniquePairs.size}`);
 
 // ── Write output ──────────────────────────────────────────────────────────────
 const output = { width: W, height: H, tiles };
@@ -102,8 +125,8 @@ fs.writeFileSync(MAP_OUT, JSON.stringify(output), 'utf8');
 const fileSizeKB = (fs.statSync(MAP_OUT).size / 1024).toFixed(1);
 console.log(`\nSaved: ${MAP_OUT}`);
 console.log(`File size: ${fileSizeKB} KB`);
-console.log('\nAtlas decode reference (GDScript):');
-console.log('  if v == 255: skip (empty)');
-console.log('  if v == 32:  Vector2i(0, 4)  # water');
-console.log('  else:        Vector2i(v % 8, v / 8)  # A2 kind');
+console.log('\nTile format:');
+console.log('  65535 = empty (skip)');
+console.log('  65534 = water (A1)');
+console.log('  0-1535: kind = v/48, shape = v%48');
 console.log('\nNext: open Godot → run the game → enter Plains biome scene.');

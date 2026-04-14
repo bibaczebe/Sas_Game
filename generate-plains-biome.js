@@ -396,6 +396,14 @@ fs.mkdirSync(dataDir, { recursive: true });
 fs.writeFileSync(path.join(dataDir, 'Map001.json'), JSON.stringify(mapJson), 'utf8');
 fs.writeFileSync(path.join(dataDir, 'MapInfos.json'), JSON.stringify(mapInfos), 'utf8');
 
+// Game.rpgproject is required by RPG Maker MZ to open the project
+// It must exist as a file (content is just {})
+const rpgprojPath = path.join(OUT_DIR, 'Game.rpgproject');
+if (!fs.existsSync(rpgprojPath)) {
+  fs.writeFileSync(rpgprojPath, '{}', 'utf8');
+  console.log('Created Game.rpgproject');
+}
+
 const tileCount = data.slice(0, W * H).filter(t => t > 0).length;
 console.log(`\nDone! Map: ${W}×${H}  (${tileCount.toLocaleString()} tiles placed)`);
 console.log('\nKey locations:');

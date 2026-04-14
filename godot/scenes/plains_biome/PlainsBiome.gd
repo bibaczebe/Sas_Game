@@ -3,11 +3,74 @@ extends Node2D
 # ── Constants ─────────────────────────────────────────────────────────────────
 const TILE_SIZE     := 48
 const MAP_JSON      := "res://assets/maps/plains_biome.json"
+const OUTSIDE_A2    := "res://assets/tilesets/outside_a2.png"
 const PLAYER_SPEED  := 220.0
 const INTERACT_DIST := 80.0
 
-# Atlas coords in world_a2_atlas.png
-const ATLAS_WATER := Vector2i(0, 4)
+# Packed-tile sentinels (match convert-rpgmz-map.js)
+const PACKED_EMPTY := 65535
+const PACKED_WATER := 65534
+
+# ── FLOOR_AUTOTILE_TABLE ──────────────────────────────────────────────────────
+# Direct port of Tilemap.FLOOR_AUTOTILE_TABLE from RPG Maker MZ rmmz_core.js.
+# Each entry: 4 quadrants [qsx, qsy] giving 24×24 mini-tile offsets inside
+# the tile-type's 96×144 block in Outside_A2.png.
+# Quadrant order: TL=0, TR=1, BL=2, BR=3.
+# Pixel formula per quadrant i:
+#   src_x = (kind%8)*96  + qsx*24
+#   src_y = (kind/8)*144 + qsy*24
+#   dst_x = (i%2)*24
+#   dst_y = (i/2)*24
+const AUTOTILE_TABLE: Array = [
+	[[2,4],[1,4],[2,3],[1,3]], # 0
+	[[2,0],[1,4],[2,3],[1,3]], # 1
+	[[2,4],[3,0],[2,3],[1,3]], # 2
+	[[2,0],[3,0],[2,3],[1,3]], # 3
+	[[2,4],[1,4],[2,3],[3,1]], # 4
+	[[2,0],[1,4],[2,3],[3,1]], # 5
+	[[2,4],[3,0],[2,3],[3,1]], # 6
+	[[2,0],[3,0],[2,3],[3,1]], # 7
+	[[2,4],[1,4],[2,1],[1,3]], # 8
+	[[2,0],[1,4],[2,1],[1,3]], # 9
+	[[2,4],[3,0],[2,1],[1,3]], # 10
+	[[2,0],[3,0],[2,1],[1,3]], # 11
+	[[2,4],[1,4],[2,1],[3,1]], # 12
+	[[2,0],[1,4],[2,1],[3,1]], # 13
+	[[2,4],[3,0],[2,1],[3,1]], # 14
+	[[2,0],[3,0],[2,1],[3,1]], # 15
+	[[0,4],[1,4],[0,3],[1,3]], # 16
+	[[0,4],[3,0],[0,3],[1,3]], # 17
+	[[0,4],[1,4],[0,3],[3,1]], # 18
+	[[0,4],[3,0],[0,3],[3,1]], # 19
+	[[2,2],[1,2],[2,3],[1,3]], # 20
+	[[2,2],[1,2],[2,3],[3,1]], # 21
+	[[2,2],[1,2],[2,1],[1,3]], # 22
+	[[2,2],[1,2],[2,1],[3,1]], # 23
+	[[2,4],[3,4],[2,3],[3,3]], # 24
+	[[2,4],[3,4],[2,1],[3,3]], # 25
+	[[2,0],[3,4],[2,3],[3,3]], # 26
+	[[2,0],[3,4],[2,1],[3,3]], # 27
+	[[2,4],[1,4],[2,5],[1,5]], # 28
+	[[2,0],[1,4],[2,5],[1,5]], # 29
+	[[2,4],[3,0],[2,5],[1,5]], # 30
+	[[2,0],[3,0],[2,5],[1,5]], # 31
+	[[0,4],[3,4],[0,3],[3,3]], # 32
+	[[2,2],[1,2],[2,5],[1,5]], # 33
+	[[0,2],[1,2],[0,3],[1,3]], # 34
+	[[0,2],[1,2],[0,3],[3,1]], # 35
+	[[2,2],[3,2],[2,3],[3,3]], # 36
+	[[2,2],[3,2],[2,1],[3,3]], # 37
+	[[2,4],[3,4],[2,5],[3,5]], # 38
+	[[2,0],[3,4],[2,5],[3,5]], # 39
+	[[0,4],[1,4],[0,5],[1,5]], # 40
+	[[0,4],[3,0],[0,5],[1,5]], # 41
+	[[0,2],[3,2],[0,3],[3,3]], # 42
+	[[0,2],[1,2],[0,5],[1,5]], # 43
+	[[0,4],[3,4],[0,5],[3,5]], # 44
+	[[2,2],[3,2],[2,5],[3,5]], # 45
+	[[0,2],[3,2],[0,5],[3,5]], # 46
+	[[0,0],[1,0],[0,1],[1,1]], # 47 (fully surrounded — solid fill)
+]
 
 # ── Named locations (tile coordinates) ───────────────────────────────────────
 # scene: null → uses generic LocationHub skeleton
@@ -34,6 +97,8 @@ var _minimap_timer := 0.0
 var _location_label_timer := 0.0
 var _current_loc := ""
 var _near_location: Dictionary = {}
+# Maps packed_int → atlas Vector2i for minimap color lookup
+var _packed_to_atlas: Dictionary = {}
 
 @onready var _hud:        CanvasLayer = $HUD
 @onready var _minimap:    TextureRect = $HUD/Minimap
@@ -109,41 +174,110 @@ func _load_map() -> void:
 	_map_h = int(parsed["height"])
 	var tiles: Array = parsed["tiles"]
 
-	# Build TileSet from atlas
-	var atlas := TileSetAtlasSource.new()
-	atlas.texture = load("res://assets/tilesets/world_a2_atlas.png")
-	atlas.texture_region_size = Vector2i(TILE_SIZE, TILE_SIZE)
-	for row in range(5):
-		for col in range(8):
-			atlas.create_tile(Vector2i(col, row))
+	# ── Step 1: collect unique packed values (skip empty/water for atlas) ─────
+	var unique_packed: Array = []
+	for v_raw in tiles:
+		var v: int = int(v_raw)
+		if v != PACKED_EMPTY and v != PACKED_WATER:
+			if not (v in unique_packed):
+				unique_packed.append(v)
+
+	print("[PlainsBiome] Unique autotile variants: %d" % unique_packed.size())
+
+	# ── Step 2: composite atlas from Outside_A2.png ───────────────────────────
+	var a2_img: Image = load(OUTSIDE_A2).get_image()
+	# Atlas layout: up to 32 tiles per row
+	const COLS_PER_ROW := 32
+	var tile_count: int = unique_packed.size() + 1  # +1 for water tile
+	var atlas_cols: int = min(tile_count, COLS_PER_ROW)
+	var atlas_rows: int = int(ceil(float(tile_count) / COLS_PER_ROW))
+	var atlas_img := Image.create(
+		atlas_cols * TILE_SIZE,
+		atlas_rows * TILE_SIZE,
+		false,
+		Image.FORMAT_RGBA8
+	)
+
+	# Build packed_int → atlas_index mapping
+	var packed_to_idx: Dictionary = {}
+	var idx: int = 0
+	for packed in unique_packed:
+		packed_to_idx[packed] = idx
+		_composite_tile(a2_img, atlas_img, packed, idx)
+		idx += 1
+
+	# Water tile (solid blue-ish) at idx = unique_packed.size()
+	var water_idx: int = idx
+	var water_col: int = water_idx % COLS_PER_ROW
+	var water_row: int = water_idx / COLS_PER_ROW
+	var water_rect := Rect2i(water_col * TILE_SIZE, water_row * TILE_SIZE, TILE_SIZE, TILE_SIZE)
+	atlas_img.fill_rect(water_rect, Color(0.15, 0.30, 0.65, 1.0))
+
+	# ── Step 3: build TileSet from composited atlas ────────────────────────────
+	var atlas_tex := ImageTexture.create_from_image(atlas_img)
+	var atlas_src := TileSetAtlasSource.new()
+	atlas_src.texture = atlas_tex
+	atlas_src.texture_region_size = Vector2i(TILE_SIZE, TILE_SIZE)
+	for r in range(atlas_rows):
+		for c in range(atlas_cols):
+			if r * COLS_PER_ROW + c < tile_count:
+				atlas_src.create_tile(Vector2i(c, r))
 
 	var ts := TileSet.new()
 	ts.tile_size = Vector2i(TILE_SIZE, TILE_SIZE)
-	ts.add_source(atlas, 0)
+	ts.add_source(atlas_src, 0)
 
 	_tile_layer = TileMapLayer.new()
 	_tile_layer.z_index = -10
 	_tile_layer.tile_set = ts
 	add_child(_tile_layer)
 
-	# Populate cells
+	# ── Step 4: populate cells ────────────────────────────────────────────────
 	var placed := 0
 	for ty in range(_map_h):
 		for tx in range(_map_w):
 			var v: int = int(tiles[ty * _map_w + tx])
-			if v == 255:
+			if v == PACKED_EMPTY:
 				continue
-			var ac: Vector2i
-			if v == 32:
-				ac = ATLAS_WATER
-			elif v < 32:
-				ac = Vector2i(v % 8, v / 8)
+			var tile_idx: int
+			if v == PACKED_WATER:
+				tile_idx = water_idx
+			elif packed_to_idx.has(v):
+				tile_idx = packed_to_idx[v]
 			else:
 				continue
+			var ac := Vector2i(tile_idx % COLS_PER_ROW, tile_idx / COLS_PER_ROW)
 			_tile_layer.set_cell(Vector2i(tx, ty), 0, ac)
+			_packed_to_atlas[v] = ac
 			placed += 1
 
 	print("[PlainsBiome] Map loaded: %d×%d, %d tiles placed." % [_map_w, _map_h, placed])
+
+
+# ── Autotile compositor ───────────────────────────────────────────────────────
+# Composites one 48×48 tile into atlas_img at slot `idx` using AUTOTILE_TABLE.
+# Source: Outside_A2.png (768×576), 96×144 px per kind, 24×24 mini-tiles.
+func _composite_tile(a2: Image, atlas: Image, packed: int, idx: int) -> void:
+	var kind: int  = packed / 48   # 0–31
+	var shape: int = packed % 48   # 0–47
+	var entry: Array = AUTOTILE_TABLE[shape]
+
+	var bx: int = (kind % 8) * 96   # x pixel of kind's block in Outside_A2.png
+	var by: int = (kind / 8) * 144  # y pixel of kind's block
+
+	var dst_col: int = idx % 32
+	var dst_row: int = idx / 32
+	var dst_x0: int  = dst_col * TILE_SIZE
+	var dst_y0: int  = dst_row * TILE_SIZE
+
+	for i in 4:
+		var qsx: int = entry[i][0]
+		var qsy: int = entry[i][1]
+		var src_x: int = bx + qsx * 24
+		var src_y: int = by + qsy * 24
+		var dst_x: int = dst_x0 + (i % 2) * 24
+		var dst_y: int = dst_y0 + (i / 2) * 24
+		atlas.blit_rect(a2, Rect2i(src_x, src_y, 24, 24), Vector2i(dst_x, dst_y))
 
 
 # ── Player ────────────────────────────────────────────────────────────────────
@@ -303,30 +437,31 @@ func _update_minimap() -> void:
 
 
 func _atlas_to_minimap_color(ac: Vector2i) -> Color:
-	if ac == Vector2i(0, 4): return Color(0.10, 0.22, 0.55)  # water
-	if ac == Vector2i(1, 4): return Color(0.06, 0.06, 0.10)  # fog
-	# A2 kind = ac.x + ac.y * 8
-	match ac.y:
-		0: match ac.x:
-			0: return Color(0.35, 0.62, 0.22)  # Grassland A
-			1: return Color(0.18, 0.38, 0.14)  # Forest shadow
-			2: return Color(0.40, 0.66, 0.26)  # Grassland B
-			3: return Color(0.26, 0.44, 0.18)  # Grassland B Dark
-			4: return Color(0.12, 0.32, 0.10)  # Forest
-			5: return Color(0.08, 0.22, 0.06)  # Forest Fir
-			6: return Color(0.48, 0.46, 0.38)  # Mountain Grass
-			7: return Color(0.44, 0.38, 0.28)  # Mountain Dirt
-		1: match ac.x:
-			0, 1: return Color(0.55, 0.48, 0.30)  # Wasteland
-			2:    return Color(0.60, 0.54, 0.34)  # Dirt Field
-			5:    return Color(0.56, 0.42, 0.20)  # Road Dirt
-		2: match ac.x:
-			0, 1: return Color(0.82, 0.74, 0.40)  # Desert
-			5:    return Color(0.46, 0.44, 0.40)  # Road Paved
-			6:    return Color(0.45, 0.44, 0.40)  # Mountain Rock
-		3: match ac.x:
-			0:    return Color(0.80, 0.88, 0.95)  # Snowfield
-			1:    return Color(0.90, 0.94, 0.98)  # Mountain Snow
+	# Reverse-lookup packed value from atlas coords
+	for packed in _packed_to_atlas:
+		if _packed_to_atlas[packed] == ac:
+			return _kind_to_minimap_color(packed / 48)
+	return Color(0.10, 0.22, 0.55)  # water / unknown
+
+
+func _kind_to_minimap_color(kind: int) -> Color:
+	match kind:
+		0:  return Color(0.35, 0.62, 0.22)  # Grassland A
+		1:  return Color(0.18, 0.38, 0.14)  # Grassland Dark
+		2:  return Color(0.40, 0.66, 0.26)  # Grassland B
+		3:  return Color(0.26, 0.44, 0.18)  # Grassland B Dark
+		4:  return Color(0.12, 0.32, 0.10)  # Forest
+		5:  return Color(0.08, 0.22, 0.06)  # Forest Fir
+		6:  return Color(0.48, 0.46, 0.38)  # Mountain Grass
+		7:  return Color(0.44, 0.38, 0.28)  # Mountain Dirt
+		8, 9:  return Color(0.55, 0.48, 0.30)   # Wasteland
+		10, 11: return Color(0.60, 0.54, 0.34)  # Dirt Field
+		13: return Color(0.56, 0.42, 0.20)  # Road Dirt
+		16, 17: return Color(0.82, 0.74, 0.40)  # Desert
+		21: return Color(0.46, 0.44, 0.40)  # Road Paved
+		22: return Color(0.45, 0.44, 0.40)  # Mountain Rock
+		24: return Color(0.80, 0.88, 0.95)  # Snowfield
+		25: return Color(0.90, 0.94, 0.98)  # Mountain Snow
 	return Color(0.38, 0.55, 0.28)   # fallback grass
 
 
