@@ -31,8 +31,58 @@ const OUT_DIR = path.join(
 );
 
 // ── Tile ID helpers ───────────────────────────────────────────────────────────
-const A2 = (kind, shape = 47) => 2816 + kind * 48 + shape;
-const A1 = (kind, shape = 0)  => 2048 + kind * 48 + shape;
+// shape is computed by computeShapes() post-pass; default 0 = solid fill
+const A2 = (kind, shape = 0) => 2816 + kind * 48 + shape;
+const A1 = (kind, shape = 0) => 2048 + kind * 48 + shape;
+
+// Cardinal autotile shape lookup — derived from real RPG Maker MZ sample maps.
+// Key = bits: N=1, E=2, S=4, W=8 (1 if neighbor is same kind, 0 otherwise).
+// 16 cardinal configurations → correct shape index for each border/edge/fill.
+const CARDINAL_SHAPE = [
+  46, // 0000 = isolated
+  44, // 0001 = N only
+  43, // 0010 = E only
+  40, // 0011 = N+E corner
+  42, // 0100 = S only
+  32, // 0101 = N+S tunnel
+  34, // 0110 = E+S corner
+  16, // 0111 = N+E+S (open W)
+  45, // 1000 = W only
+  38, // 1001 = N+W corner
+  33, // 1010 = E+W tunnel
+  28, // 1011 = N+E+W (open S)
+  36, // 1100 = S+W corner
+  26, // 1101 = N+S+W (open E)
+  20, // 1110 = E+S+W (open N)
+   0, // 1111 = all connected → solid fill
+];
+
+// Post-process layer 0: rewrite each A2 tile's shape based on its 4 cardinal
+// neighbors. A1 water tiles are skipped (shape doesn't apply to water).
+function computeShapes() {
+  const layer0start = 0;
+  const A2_BASE = 2816, A2_END = 4352;
+  // snapshot kind for each cell (0 if not A2)
+  const kinds = new Int32Array(W * H);
+  for (let i = 0; i < W * H; i++) {
+    const id = data[i];
+    if (id >= A2_BASE && id < A2_END) kinds[i] = Math.floor((id - A2_BASE) / 48);
+    else                               kinds[i] = -1;  // water / empty
+  }
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const idx = y * W + x;
+      if (kinds[idx] < 0) continue;
+      const k = kinds[idx];
+      const n = (y > 0   && kinds[(y-1)*W+x] === k) ? 1 : 0;
+      const e = (x < W-1 && kinds[y*W+(x+1)] === k) ? 2 : 0;
+      const s = (y < H-1 && kinds[(y+1)*W+x] === k) ? 4 : 0;
+      const w = (x > 0   && kinds[y*W+(x-1)] === k) ? 8 : 0;
+      const bits = n | e | s | w;
+      data[idx] = A2_BASE + k * 48 + CARDINAL_SHAPE[bits];
+    }
+  }
+}
 
 const T = {
   GRASS:        A2(0),   // Grassland A         — main plains
@@ -388,6 +438,9 @@ function copyDir(src, dst) {
       fs.copyFileSync(s, d);
   }
 }
+
+// ── Post-process: compute proper autotile shapes ──────────────────────────────
+computeShapes();
 
 console.log('Creating project at:', OUT_DIR);
 copyDir(NEWDATA_SRC, OUT_DIR);
