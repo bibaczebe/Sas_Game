@@ -1,0 +1,9 @@
+# Godot import cache — regenerated automatically
+.godot/
+
+# Godot-generated import sidecar files
+*.import
+
+# OS junk
+.DS_Store
+Thumbs.db

@@ -38,3 +38,6 @@ desktop.ini
 
 # Generated sprites (committed as-is from pixellab)
 # — NOT ignored, colleague needs them
+
+# Phaser.js frontend — usunięty, zastąpiony przez Godot
+client/

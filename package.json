@@ -1,4 +1,12 @@
 {
+  "name": "sas-tools",
+  "description": "Narzędzia do generowania i importowania map dla SaS Game (Godot)",
+  "scripts": {
+    "gen-plains":   "node generate-plains-biome.js",
+    "import-map":   "node convert-rpgmz-map.js",
+    "full-pipeline":"node generate-plains-biome.js && node convert-rpgmz-map.js",
+    "extract-tiles":"node convert-rpgmz-tiles.js"
+  },
   "devDependencies": {
     "jimp": "^1.6.1"
   }
