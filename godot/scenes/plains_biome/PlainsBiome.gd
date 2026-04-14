@@ -97,8 +97,10 @@ var _minimap_timer := 0.0
 var _location_label_timer := 0.0
 var _current_loc := ""
 var _near_location: Dictionary = {}
-# Maps packed_int → atlas Vector2i for minimap color lookup
-var _packed_to_atlas: Dictionary = {}
+# Raw tile array (packed ints) stored for minimap — populated at load
+var _tiles: Array = []
+# Pre-baked static terrain minimap image (built once, cloned each update)
+var _minimap_terrain_img: Image = null
 
 @onready var _hud:        CanvasLayer = $HUD
 @onready var _minimap:    TextureRect = $HUD/Minimap
@@ -177,6 +179,7 @@ func _load_map() -> void:
 	_map_w = int(parsed["width"])
 	_map_h = int(parsed["height"])
 	var tiles: Array = parsed["tiles"]
+	_tiles = tiles  # store for minimap
 	var map_size: int = FileAccess.get_file_as_bytes(MAP_JSON).size()
 
 	# ── Try loading from cache (skip compositing if map unchanged) ────────────
@@ -278,10 +281,10 @@ func _load_map() -> void:
 				continue
 			var ac := Vector2i(tile_idx % COLS_PER_ROW, tile_idx / COLS_PER_ROW)
 			_tile_layer.set_cell(Vector2i(tx, ty), 0, ac)
-			_packed_to_atlas[v] = ac
 			placed += 1
 
 	print("[PlainsBiome] Map loaded: %d×%d, %d tiles placed." % [_map_w, _map_h, placed])
+	_build_minimap_terrain()
 
 
 # ── Cache validation ─────────────────────────────────────────────────────────
@@ -435,29 +438,30 @@ func _handle_interact() -> void:
 
 
 # ── Minimap ───────────────────────────────────────────────────────────────────
-func _update_minimap() -> void:
-	if _map_w == 0 or _tile_layer == null:
+# Called ONCE after map load — builds static 160×120 terrain image with
+# location dots baked in. Stored as Image (not texture) for fast duplicate().
+func _build_minimap_terrain() -> void:
+	if _map_w == 0 or _tiles.is_empty():
 		return
-
 	const MW := 160
 	const MH := 120
 	var img := Image.create(MW, MH, false, Image.FORMAT_RGB8)
 
-	# Sample terrain colors from tile layer
 	for my in range(MH):
 		for mx in range(MW):
 			var tx: int = int(float(mx) / MW * _map_w)
 			var ty: int = int(float(my) / MH * _map_h)
-			var src_id: int = _tile_layer.get_cell_source_id(Vector2i(tx, ty))
+			var v: int = int(_tiles[ty * _map_w + tx])
 			var col: Color
-			if src_id < 0:
-				col = Color(0.06, 0.08, 0.04)   # empty/dark
+			if v == PACKED_EMPTY:
+				col = Color(0.06, 0.08, 0.04)
+			elif v == PACKED_WATER:
+				col = Color(0.10, 0.22, 0.55)
 			else:
-				var ac: Vector2i = _tile_layer.get_cell_atlas_coords(Vector2i(tx, ty))
-				col = _atlas_to_minimap_color(ac)
+				col = _kind_to_minimap_color(v / 48)
 			img.set_pixel(mx, my, col)
 
-	# Location dots
+	# Bake location dots into static image
 	for loc in LOCATIONS:
 		var mx: int = int(float(int(loc["tx"])) / _map_w * MW)
 		var my_pos: int = int(float(int(loc["ty"])) / _map_h * MH)
@@ -466,7 +470,21 @@ func _update_minimap() -> void:
 			for oy in range(-2, 3):
 				img.set_pixel(clamp(mx+ox, 0, MW-1), clamp(my_pos+oy, 0, MH-1), lcol)
 
-	# Player dot
+	_minimap_terrain_img = img
+	_minimap.texture = ImageTexture.create_from_image(img)
+	print("[PlainsBiome] Minimap terrain pre-baked.")
+
+
+# Called every 0.5 s — clones terrain image and draws only the player dot.
+# O(49) pixel writes instead of O(4.5 M) comparisons.
+func _update_minimap() -> void:
+	if _minimap_terrain_img == null or _player == null or _map_w == 0:
+		return
+	const MW := 160
+	const MH := 120
+
+	var img: Image = _minimap_terrain_img.duplicate()
+
 	var ppx: int = int((_player.position.x / (_map_w * TILE_SIZE)) * MW)
 	var ppy: int = int((_player.position.y / (_map_h * TILE_SIZE)) * MH)
 	for ox in range(-3, 4):
@@ -474,14 +492,6 @@ func _update_minimap() -> void:
 			img.set_pixel(clamp(ppx+ox, 0, MW-1), clamp(ppy+oy, 0, MH-1), Color.WHITE)
 
 	_minimap.texture = ImageTexture.create_from_image(img)
-
-
-func _atlas_to_minimap_color(ac: Vector2i) -> Color:
-	# Reverse-lookup packed value from atlas coords
-	for packed in _packed_to_atlas:
-		if _packed_to_atlas[packed] == ac:
-			return _kind_to_minimap_color(packed / 48)
-	return Color(0.10, 0.22, 0.55)  # water / unknown
 
 
 func _kind_to_minimap_color(kind: int) -> Color:

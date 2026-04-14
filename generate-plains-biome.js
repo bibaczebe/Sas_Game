@@ -460,12 +460,11 @@ if (tilesets[1]) {
   console.log('Tileset set to: Outside_A2, mode=1 (Area)');
 }
 
-// Game.rpgproject is required by RPG Maker MZ to open the project
-// It must exist as a file (content is just {})
-const rpgprojPath = path.join(OUT_DIR, 'Game.rpgproject');
-if (!fs.existsSync(rpgprojPath)) {
-  fs.writeFileSync(rpgprojPath, '{}', 'utf8');
-  console.log('Created Game.rpgproject');
+// Game.rmmzproject — the real RPG Maker MZ project marker (version string)
+const rmmzprojPath = path.join(OUT_DIR, 'Game.rmmzproject');
+if (!fs.existsSync(rmmzprojPath)) {
+  fs.writeFileSync(rmmzprojPath, 'RPGMZ 1.9.0', 'utf8');
+  console.log('Created Game.rmmzproject');
 }
 
 const tileCount = data.slice(0, W * H).filter(t => t > 0).length;
