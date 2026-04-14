@@ -1,31 +1,13 @@
 extends Node
 
-# Token storage — held in memory only (never written to disk)
-var _access_token: String = ""
-var _refresh_token: String = ""
+# AuthManager — STUB (tryb offline)
+# Gra jest single-player. Zawsze "zalogowany" lokalnie.
 
 signal logged_in
 signal logged_out
 
-
-func set_tokens(access: String, refresh: String) -> void:
-	_access_token = access
-	_refresh_token = refresh
-
-
-func get_access_token() -> String:
-	return _access_token
-
-
-func get_refresh_token() -> String:
-	return _refresh_token
-
-
-func is_logged_in() -> bool:
-	return _access_token != ""
-
-
-func clear() -> void:
-	_access_token = ""
-	_refresh_token = ""
-	logged_out.emit()
+func set_tokens(_access: String, _refresh: String) -> void: pass
+func get_access_token()  -> String:  return "offline"
+func get_refresh_token() -> String:  return "offline"
+func is_logged_in()      -> bool:    return true
+func clear()             -> void:    logged_out.emit()

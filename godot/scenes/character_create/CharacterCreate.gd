@@ -126,12 +126,6 @@ func _on_confirm() -> void:
 	error_label.text = ""
 	confirm_btn.disabled = true
 
-	var result: Dictionary = await ApiManager.create_character(char_name, _selected_class, _selected_race)
-	confirm_btn.disabled = false
-
-	var char_data: Dictionary = result.get("character", {})
-	if not char_data.is_empty():
-		GameState.load_snapshot(char_data)
-		get_tree().change_scene_to_file("res://scenes/plains_biome/PlainsBiome.tscn")
-	else:
-		error_label.text = result.get("error", result.get("message", "Failed to create character."))
+	# Tryb offline — zapis lokalny, bez serwera
+	GameState.create_character(char_name, _selected_class, _selected_race)
+	get_tree().change_scene_to_file("res://scenes/plains_biome/PlainsBiome.tscn")
