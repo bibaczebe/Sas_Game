@@ -153,6 +153,10 @@ func _process(delta: float) -> void:
 			_loc_popup.hide()
 
 
+# ── Cache paths ──────────────────────────────────────────────────────────────
+const CACHE_PNG  := "user://plains_atlas_cache.png"
+const CACHE_META := "user://plains_atlas_cache_meta.json"
+
 # ── Map loading ───────────────────────────────────────────────────────────────
 func _load_map() -> void:
 	if not FileAccess.file_exists(MAP_JSON):
@@ -173,54 +177,80 @@ func _load_map() -> void:
 	_map_w = int(parsed["width"])
 	_map_h = int(parsed["height"])
 	var tiles: Array = parsed["tiles"]
+	var map_size: int = FileAccess.get_file_as_bytes(MAP_JSON).size()
 
-	# ── Step 1: collect unique packed values (skip empty/water for atlas) ─────
-	var unique_packed: Array = []
-	for v_raw in tiles:
-		var v: int = int(v_raw)
-		if v != PACKED_EMPTY and v != PACKED_WATER:
-			if not (v in unique_packed):
-				unique_packed.append(v)
-
-	print("[PlainsBiome] Unique autotile variants: %d" % unique_packed.size())
-
-	# ── Step 2: composite atlas from Outside_A2.png ───────────────────────────
-	var a2_img: Image = load(OUTSIDE_A2).get_image()
-	# Atlas layout: up to 32 tiles per row
-	const COLS_PER_ROW := 32
-	var tile_count: int = unique_packed.size() + 1  # +1 for water tile
-	var atlas_cols: int = min(tile_count, COLS_PER_ROW)
-	var atlas_rows: int = int(ceil(float(tile_count) / COLS_PER_ROW))
-	var atlas_img := Image.create(
-		atlas_cols * TILE_SIZE,
-		atlas_rows * TILE_SIZE,
-		false,
-		Image.FORMAT_RGBA8
-	)
-
-	# Build packed_int → atlas_index mapping
+	# ── Try loading from cache (skip compositing if map unchanged) ────────────
+	var atlas_tex: ImageTexture
 	var packed_to_idx: Dictionary = {}
-	var idx: int = 0
-	for packed in unique_packed:
-		packed_to_idx[packed] = idx
-		_composite_tile(a2_img, atlas_img, packed, idx)
-		idx += 1
+	var water_idx: int = -1
+	const COLS_PER_ROW := 32
 
-	# Water tile (solid blue-ish) at idx = unique_packed.size()
-	var water_idx: int = idx
-	var water_col: int = water_idx % COLS_PER_ROW
-	var water_row: int = water_idx / COLS_PER_ROW
-	var water_rect := Rect2i(water_col * TILE_SIZE, water_row * TILE_SIZE, TILE_SIZE, TILE_SIZE)
-	atlas_img.fill_rect(water_rect, Color(0.15, 0.30, 0.65, 1.0))
+	if _cache_valid(map_size):
+		print("[PlainsBiome] Loading atlas from cache…")
+		var img := Image.new()
+		img.load(CACHE_PNG)
+		atlas_tex = ImageTexture.create_from_image(img)
+		var meta_raw: Variant = JSON.parse_string(
+			FileAccess.open(CACHE_META, FileAccess.READ).get_as_text())
+		if meta_raw is Dictionary:
+			var meta: Dictionary = meta_raw
+			water_idx = int(meta.get("water_idx", -1))
+			for k in meta.get("packed_to_idx", {}):
+				packed_to_idx[int(k)] = int(meta["packed_to_idx"][k])
+	else:
+		# ── Step 1: collect unique packed values ───────────────────────────────
+		var unique_packed: Array = []
+		for v_raw in tiles:
+			var v: int = int(v_raw)
+			if v != PACKED_EMPTY and v != PACKED_WATER:
+				if not (v in unique_packed):
+					unique_packed.append(v)
+		print("[PlainsBiome] Compositing atlas: %d unique tile variants…" % unique_packed.size())
 
-	# ── Step 3: build TileSet from composited atlas ────────────────────────────
-	var atlas_tex := ImageTexture.create_from_image(atlas_img)
+		# ── Step 2: composite atlas from Outside_A2.png ───────────────────────
+		var a2_img: Image = load(OUTSIDE_A2).get_image()
+		var tile_count: int = unique_packed.size() + 1  # +1 for water
+		var atlas_cols: int = min(tile_count, COLS_PER_ROW)
+		var atlas_rows: int = int(ceil(float(tile_count) / COLS_PER_ROW))
+		var atlas_img := Image.create(
+			atlas_cols * TILE_SIZE, atlas_rows * TILE_SIZE,
+			false, Image.FORMAT_RGBA8)
+
+		var idx: int = 0
+		for packed in unique_packed:
+			packed_to_idx[packed] = idx
+			_composite_tile(a2_img, atlas_img, packed, idx)
+			idx += 1
+
+		# Water tile
+		water_idx = idx
+		var wc: int = water_idx % COLS_PER_ROW
+		var wr: int = water_idx / COLS_PER_ROW
+		atlas_img.fill_rect(Rect2i(wc * TILE_SIZE, wr * TILE_SIZE, TILE_SIZE, TILE_SIZE),
+			Color(0.15, 0.30, 0.65, 1.0))
+
+		atlas_tex = ImageTexture.create_from_image(atlas_img)
+
+		# ── Save cache ────────────────────────────────────────────────────────
+		atlas_img.save_png(CACHE_PNG)
+		var meta: Dictionary = { "map_size": map_size, "water_idx": water_idx, "packed_to_idx": {} }
+		for packed in packed_to_idx:
+			meta["packed_to_idx"][str(packed)] = packed_to_idx[packed]
+		var mf := FileAccess.open(CACHE_META, FileAccess.WRITE)
+		mf.store_string(JSON.stringify(meta))
+		mf.close()
+		print("[PlainsBiome] Atlas cached to user://plains_atlas_cache.png")
+
+	# ── Step 3: build TileSet ─────────────────────────────────────────────────
+	var tile_count2: int = packed_to_idx.size() + 1
+	var atlas_cols2: int = min(tile_count2, COLS_PER_ROW)
+	var atlas_rows2: int = int(ceil(float(tile_count2) / COLS_PER_ROW))
 	var atlas_src := TileSetAtlasSource.new()
 	atlas_src.texture = atlas_tex
 	atlas_src.texture_region_size = Vector2i(TILE_SIZE, TILE_SIZE)
-	for r in range(atlas_rows):
-		for c in range(atlas_cols):
-			if r * COLS_PER_ROW + c < tile_count:
+	for r in range(atlas_rows2):
+		for c in range(atlas_cols2):
+			if r * COLS_PER_ROW + c < tile_count2:
 				atlas_src.create_tile(Vector2i(c, r))
 
 	var ts := TileSet.new()
@@ -252,6 +282,16 @@ func _load_map() -> void:
 			placed += 1
 
 	print("[PlainsBiome] Map loaded: %d×%d, %d tiles placed." % [_map_w, _map_h, placed])
+
+
+# ── Cache validation ─────────────────────────────────────────────────────────
+func _cache_valid(current_map_size: int) -> bool:
+	if not FileAccess.file_exists(CACHE_PNG): return false
+	if not FileAccess.file_exists(CACHE_META): return false
+	var meta_raw: Variant = JSON.parse_string(
+		FileAccess.open(CACHE_META, FileAccess.READ).get_as_text())
+	if not meta_raw is Dictionary: return false
+	return int((meta_raw as Dictionary).get("map_size", -1)) == current_map_size
 
 
 # ── Autotile compositor ───────────────────────────────────────────────────────

@@ -449,6 +449,17 @@ fs.mkdirSync(dataDir, { recursive: true });
 fs.writeFileSync(path.join(dataDir, 'Map001.json'), JSON.stringify(mapJson), 'utf8');
 fs.writeFileSync(path.join(dataDir, 'MapInfos.json'), JSON.stringify(mapInfos), 'utf8');
 
+// ── Fix tileset: use Outside_A2 (outdoor terrain), mode 1 = Area ─────────────
+const tilesetsPath = path.join(dataDir, 'Tilesets.json');
+const tilesets = JSON.parse(fs.readFileSync(tilesetsPath, 'utf8'));
+if (tilesets[1]) {
+  tilesets[1].name         = 'SaS Plains — Outside';
+  tilesets[1].mode         = 1;  // 0=World, 1=Area
+  tilesets[1].tilesetNames = ['Outside_A1','Outside_A2','Outside_A3','Outside_A4','Outside_A5','Outside_B','Outside_C','',''];
+  fs.writeFileSync(tilesetsPath, JSON.stringify(tilesets), 'utf8');
+  console.log('Tileset set to: Outside_A2, mode=1 (Area)');
+}
+
 // Game.rpgproject is required by RPG Maker MZ to open the project
 // It must exist as a file (content is just {})
 const rpgprojPath = path.join(OUT_DIR, 'Game.rpgproject');
