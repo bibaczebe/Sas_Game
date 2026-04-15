@@ -1,9 +1,9 @@
 extends Control
 
 # ── Animation constants ───────────────────────────────────────────────────────
-const HOVER_SCALE  := Vector2(1.07, 1.07)
+const HOVER_SCALE  := Vector2(1.06, 1.06)
 const NORMAL_SCALE := Vector2(1.0,  1.0)
-const PRESS_SCALE  := Vector2(0.94, 0.94)
+const PRESS_SCALE  := Vector2(0.95, 0.95)
 const HOVER_MOD    := Color(1.30, 1.22, 0.80, 1.0)  # warm golden glow
 const NORMAL_MOD   := Color.WHITE
 
