@@ -1,6 +1,12 @@
-[gd_scene load_steps=2 format=3 uid="uid://mainmenu_scene"]
+[gd_scene load_steps=8 format=3 uid="uid://mainmenu_scene"]
 
 [ext_resource type="Script" path="res://scenes/main_menu/MainMenu.gd" id="1"]
+[ext_resource type="Texture2D" path="res://assets/menu/Open_Screen.jpg" id="2"]
+[ext_resource type="Texture2D" path="res://assets/menu/New_Game_Buttom.png" id="3"]
+[ext_resource type="Texture2D" path="res://assets/menu/Continue_Buttom.png" id="4"]
+[ext_resource type="Texture2D" path="res://assets/menu/Options_Buttom.png" id="5"]
+[ext_resource type="Texture2D" path="res://assets/menu/Credits_Buttom.png" id="6"]
+[ext_resource type="Texture2D" path="res://assets/menu/Exit_Buttom.png" id="7"]
 
 [node name="MainMenu" type="Control"]
 layout_mode = 3
@@ -9,77 +15,84 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 script = ExtResource("1")
 
-[node name="BG" type="ColorRect" parent="."]
+[node name="BG" type="TextureRect" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0.04, 0.03, 0.08, 1)
+texture = ExtResource("2")
+expand_mode = 1
+stretch_mode = 6
 
-[node name="Title" type="Label" parent="."]
+[node name="Overlay" type="ColorRect" parent="."]
 layout_mode = 1
-offset_left = 0.0
-offset_top = 120.0
-offset_right = 1280.0
-offset_bottom = 180.0
-text = "SWORDS AND SANDALS"
-horizontal_alignment = 1
-theme_override_font_sizes/font_size = 48
-theme_override_colors/font_color = Color(1, 0.843, 0, 1)
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.04, 0.02, 0.01, 0.38)
 
-[node name="Subtitle" type="Label" parent="."]
+[node name="Center" type="CenterContainer" parent="."]
 layout_mode = 1
-offset_left = 0.0
-offset_top = 178.0
-offset_right = 1280.0
-offset_bottom = 210.0
-text = "ONLINE RPG"
-horizontal_alignment = 1
-theme_override_font_sizes/font_size = 18
-theme_override_colors/font_color = Color(0.7, 0.6, 0.4, 1)
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
 
-[node name="Root" type="VBoxContainer" parent="."]
-layout_mode = 1
-offset_left = 490.0
-offset_top = 280.0
-offset_right = 790.0
-offset_bottom = 600.0
-theme_override_constants/separation = 16
-
-[node name="NewGameBtn" type="Button" parent="Root"]
+[node name="ButtonContainer" type="VBoxContainer" parent="Center"]
 layout_mode = 2
-custom_minimum_size = Vector2(300, 54)
-text = "NEW GAME"
-theme_override_font_sizes/font_size = 20
+theme_override_constants/separation = 10
 
-[node name="ContinueBtn" type="Button" parent="Root"]
+[node name="NewGameBtn" type="TextureButton" parent="Center/ButtonContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(300, 54)
-text = "CONTINUE"
-theme_override_font_sizes/font_size = 20
+custom_minimum_size = Vector2(500, 80)
+pivot_offset = Vector2(250, 40)
+expand = true
+ignore_texture_size = true
+texture_normal = ExtResource("3")
+
+[node name="ContinueBtn" type="TextureButton" parent="Center/ButtonContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(500, 80)
+pivot_offset = Vector2(250, 40)
+expand = true
+ignore_texture_size = true
 visible = false
+texture_normal = ExtResource("4")
 
-[node name="OptionsBtn" type="Button" parent="Root"]
+[node name="OptionsBtn" type="TextureButton" parent="Center/ButtonContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(300, 54)
-text = "OPTIONS"
-theme_override_font_sizes/font_size = 20
+custom_minimum_size = Vector2(500, 80)
+pivot_offset = Vector2(250, 40)
+expand = true
+ignore_texture_size = true
+texture_normal = ExtResource("5")
 
-[node name="CreditsBtn" type="Button" parent="Root"]
+[node name="CreditsBtn" type="TextureButton" parent="Center/ButtonContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(300, 54)
-text = "CREDITS"
-theme_override_font_sizes/font_size = 20
+custom_minimum_size = Vector2(500, 80)
+pivot_offset = Vector2(250, 40)
+expand = true
+ignore_texture_size = true
+texture_normal = ExtResource("6")
 
-[node name="ExitBtn" type="Button" parent="Root"]
+[node name="ExitBtn" type="TextureButton" parent="Center/ButtonContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(300, 54)
-text = "EXIT"
-theme_override_font_sizes/font_size = 20
+custom_minimum_size = Vector2(500, 80)
+pivot_offset = Vector2(250, 40)
+expand = true
+ignore_texture_size = true
+texture_normal = ExtResource("7")
 
-[node name="VersionLabel" type="Label" parent="Root"]
-layout_mode = 2
+[node name="VersionLabel" type="Label" parent="."]
+layout_mode = 1
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -120.0
+offset_top = -32.0
+offset_right = -12.0
+offset_bottom = -10.0
 text = "v0.1 BETA"
-horizontal_alignment = 1
-theme_override_font_sizes/font_size = 12
-theme_override_colors/font_color = Color(0.5, 0.5, 0.5, 1)
+horizontal_alignment = 2
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.7, 0.65, 0.5, 0.8)
