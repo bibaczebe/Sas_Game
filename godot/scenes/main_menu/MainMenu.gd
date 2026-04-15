@@ -27,10 +27,8 @@ func _ready() -> void:
 	_btn_credits.pressed.connect(_on_credits)
 	_btn_exit.pressed.connect(_on_exit)
 
-	var all_btns: Array[TextureButton] = [
-		_btn_new_game, _btn_continue, _btn_options, _btn_credits, _btn_exit
-	]
-	for btn in all_btns:
+	var all_btns := [_btn_new_game, _btn_continue, _btn_options, _btn_credits, _btn_exit]
+	for btn: TextureButton in all_btns:
 		btn.mouse_entered.connect(_hover_on.bind(btn))
 		btn.mouse_exited.connect(_hover_off.bind(btn))
 
@@ -39,21 +37,17 @@ func _ready() -> void:
 
 # ── Intro pop-in ──────────────────────────────────────────────────────────────
 func _play_intro() -> void:
-	var all_btns: Array[TextureButton] = [
-		_btn_new_game, _btn_continue, _btn_options, _btn_credits, _btn_exit
-	]
+	var all_btns := [_btn_new_game, _btn_continue, _btn_options, _btn_credits, _btn_exit]
 	var delay := 0.0
-	for btn in all_btns:
+	for btn: TextureButton in all_btns:
 		btn.scale    = Vector2(0.80, 0.80)
 		btn.modulate = Color(1.0, 1.0, 1.0, 0.0)
-		var tw := create_tween()
-		tw.set_delay(delay)
-		tw.set_parallel(true)
-		# Scale springs in with TRANS_BACK (slight overshoot)
+		# set_delay() is on PropertyTweener, not on Tween — set per-tweener
+		var tw := create_tween().set_parallel(true)
 		tw.tween_property(btn, "scale",      NORMAL_SCALE, 0.42) \
-			.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+			.set_delay(delay).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
 		tw.tween_property(btn, "modulate:a", 1.0,          0.30) \
-			.set_ease(Tween.EASE_OUT)
+			.set_delay(delay).set_ease(Tween.EASE_OUT)
 		delay += 0.10
 
 
