@@ -29,7 +29,7 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0.04, 0.02, 0.01, 0.38)
+color = Color(0.04, 0.02, 0.01, 0.40)
 
 [node name="Center" type="CenterContainer" parent="."]
 layout_mode = 1
@@ -39,20 +39,20 @@ anchor_bottom = 1.0
 
 [node name="ButtonContainer" type="VBoxContainer" parent="Center"]
 layout_mode = 2
-theme_override_constants/separation = 10
+theme_override_constants/separation = 12
 
 [node name="NewGameBtn" type="TextureButton" parent="Center/ButtonContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(500, 80)
-pivot_offset = Vector2(250, 40)
+custom_minimum_size = Vector2(550, 115)
+pivot_offset = Vector2(275, 57)
 expand = true
 ignore_texture_size = true
 texture_normal = ExtResource("3")
 
 [node name="ContinueBtn" type="TextureButton" parent="Center/ButtonContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(500, 80)
-pivot_offset = Vector2(250, 40)
+custom_minimum_size = Vector2(550, 115)
+pivot_offset = Vector2(275, 57)
 expand = true
 ignore_texture_size = true
 visible = false
@@ -60,24 +60,24 @@ texture_normal = ExtResource("4")
 
 [node name="OptionsBtn" type="TextureButton" parent="Center/ButtonContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(500, 80)
-pivot_offset = Vector2(250, 40)
+custom_minimum_size = Vector2(550, 115)
+pivot_offset = Vector2(275, 57)
 expand = true
 ignore_texture_size = true
 texture_normal = ExtResource("5")
 
 [node name="CreditsBtn" type="TextureButton" parent="Center/ButtonContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(500, 80)
-pivot_offset = Vector2(250, 40)
+custom_minimum_size = Vector2(550, 115)
+pivot_offset = Vector2(275, 57)
 expand = true
 ignore_texture_size = true
 texture_normal = ExtResource("6")
 
 [node name="ExitBtn" type="TextureButton" parent="Center/ButtonContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(500, 80)
-pivot_offset = Vector2(250, 40)
+custom_minimum_size = Vector2(550, 115)
+pivot_offset = Vector2(275, 57)
 expand = true
 ignore_texture_size = true
 texture_normal = ExtResource("7")
@@ -88,11 +88,11 @@ anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -120.0
-offset_top = -32.0
+offset_left = -130.0
+offset_top = -34.0
 offset_right = -12.0
 offset_bottom = -10.0
 text = "v0.1 BETA"
 horizontal_alignment = 2
 theme_override_font_sizes/font_size = 14
-theme_override_colors/font_color = Color(0.7, 0.65, 0.5, 0.8)
+theme_override_colors/font_color = Color(0.7, 0.65, 0.5, 0.75)
