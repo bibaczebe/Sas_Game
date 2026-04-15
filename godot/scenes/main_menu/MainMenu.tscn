@@ -40,22 +40,22 @@ anchor_bottom = 1.0
 [node name="ButtonContainer" type="VBoxContainer" parent="Center"]
 layout_mode = 2
 size_flags_horizontal = 4
-theme_override_constants/separation = 16
+theme_override_constants/separation = 20
 
 [node name="NewGameBtn" type="TextureButton" parent="Center/ButtonContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(380, 80)
+custom_minimum_size = Vector2(758, 152)
 size_flags_horizontal = 4
-pivot_offset = Vector2(190, 40)
+pivot_offset = Vector2(379, 76)
 expand = true
 ignore_texture_size = true
 texture_normal = ExtResource("3")
 
 [node name="ContinueBtn" type="TextureButton" parent="Center/ButtonContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(380, 80)
+custom_minimum_size = Vector2(758, 152)
 size_flags_horizontal = 4
-pivot_offset = Vector2(190, 40)
+pivot_offset = Vector2(379, 76)
 expand = true
 ignore_texture_size = true
 visible = false
@@ -63,56 +63,30 @@ texture_normal = ExtResource("4")
 
 [node name="OptionsBtn" type="TextureButton" parent="Center/ButtonContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(380, 80)
+custom_minimum_size = Vector2(758, 152)
 size_flags_horizontal = 4
-pivot_offset = Vector2(190, 40)
+pivot_offset = Vector2(379, 76)
 expand = true
 ignore_texture_size = true
 texture_normal = ExtResource("5")
 
 [node name="CreditsBtn" type="TextureButton" parent="Center/ButtonContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(380, 80)
+custom_minimum_size = Vector2(758, 152)
 size_flags_horizontal = 4
-pivot_offset = Vector2(190, 40)
+pivot_offset = Vector2(379, 76)
 expand = true
 ignore_texture_size = true
 texture_normal = ExtResource("6")
 
 [node name="ExitBtn" type="TextureButton" parent="Center/ButtonContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(380, 80)
+custom_minimum_size = Vector2(758, 152)
 size_flags_horizontal = 4
-pivot_offset = Vector2(190, 40)
+pivot_offset = Vector2(379, 76)
 expand = true
 ignore_texture_size = true
 texture_normal = ExtResource("7")
-
-[node name="TitleLabel" type="Label" parent="."]
-layout_mode = 1
-anchor_left = 0.0
-anchor_top = 0.0
-anchor_right = 1.0
-anchor_bottom = 0.0
-offset_top = 60.0
-offset_bottom = 140.0
-text = "SWORD AND SANDALS"
-horizontal_alignment = 1
-theme_override_font_sizes/font_size = 64
-theme_override_colors/font_color = Color(0.96, 0.84, 0.32, 1.0)
-
-[node name="SubtitleLabel" type="Label" parent="."]
-layout_mode = 1
-anchor_left = 0.0
-anchor_top = 0.0
-anchor_right = 1.0
-anchor_bottom = 0.0
-offset_top = 138.0
-offset_bottom = 178.0
-text = "ONLINE RPG"
-horizontal_alignment = 1
-theme_override_font_sizes/font_size = 22
-theme_override_colors/font_color = Color(0.78, 0.66, 0.42, 0.9)
 
 [node name="VersionLabel" type="Label" parent="."]
 layout_mode = 1
