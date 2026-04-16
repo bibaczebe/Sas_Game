@@ -7,12 +7,12 @@ const PRESS_SCALE  := Vector2(0.95, 0.95)
 const HOVER_MOD    := Color(1.30, 1.22, 0.80, 1.0)  # warm golden glow
 const NORMAL_MOD   := Color.WHITE
 
-# ── Node refs ─────────────────────────────────────────────────────────────────
-@onready var _btn_new_game: TextureButton = $Center/ButtonContainer/NewGameBtn
-@onready var _btn_continue: TextureButton = $Center/ButtonContainer/ContinueBtn
-@onready var _btn_options:  TextureButton = $Center/ButtonContainer/OptionsBtn
-@onready var _btn_credits:  TextureButton = $Center/ButtonContainer/CreditsBtn
-@onready var _btn_exit:     TextureButton = $Center/ButtonContainer/ExitBtn
+# ── Node refs — accessed via Scene Unique Names (%NodeName) ───────────────────
+@onready var _btn_new_game: TextureButton = %NewGameBtn
+@onready var _btn_continue: TextureButton = %ContinueBtn
+@onready var _btn_options:  TextureButton = %OptionsBtn
+@onready var _btn_credits:  TextureButton = %CreditsBtn
+@onready var _btn_exit:     TextureButton = %ExitBtn
 
 var _tweens: Dictionary = {}
 

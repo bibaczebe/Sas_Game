@@ -8,6 +8,7 @@
 [ext_resource type="Texture2D" path="res://assets/menu/Credits_Buttom.png" id="6"]
 [ext_resource type="Texture2D" path="res://assets/menu/Exit_Buttom.png" id="7"]
 
+; ── Root ──────────────────────────────────────────────────────────────────────
 [node name="MainMenu" type="Control"]
 layout_mode = 3
 anchors_preset = 15
@@ -15,6 +16,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 script = ExtResource("1")
 
+; ── Background layer (behind everything) ──────────────────────────────────────
 [node name="BG" type="TextureRect" parent="."]
 layout_mode = 1
 anchors_preset = 15
@@ -31,63 +33,77 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 color = Color(0.04, 0.02, 0.01, 0.42)
 
-[node name="Center" type="CenterContainer" parent="."]
-layout_mode = 1
+; ── UI canvas layer — stable rendering, isolated from world transforms ─────────
+[node name="MenuLayer" type="CanvasLayer" parent="."]
+layer = 1
+
+; ── CenterContainer fills the full viewport inside the CanvasLayer ─────────────
+[node name="CenterContainer" type="CenterContainer" parent="MenuLayer"]
+layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 
-[node name="ButtonContainer" type="VBoxContainer" parent="Center"]
+; ── MarginContainer — breathing room around the button column (Darkest Dungeon) ─
+[node name="MarginContainer" type="MarginContainer" parent="MenuLayer/CenterContainer"]
 layout_mode = 2
-size_flags_horizontal = 4
-theme_override_constants/separation = 20
+theme_override_constants/margin_left = 32
+theme_override_constants/margin_right = 32
+theme_override_constants/margin_top = 32
+theme_override_constants/margin_bottom = 32
 
-[node name="NewGameBtn" type="TextureButton" parent="Center/ButtonContainer"]
+; ── VBoxContainer — vertical button stack ─────────────────────────────────────
+[node name="ButtonContainer" type="VBoxContainer" parent="MenuLayer/CenterContainer/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 24
+
+[node name="NewGameBtn" type="TextureButton" parent="MenuLayer/CenterContainer/MarginContainer/ButtonContainer"]
+unique_name_in_owner = true
 layout_mode = 2
 custom_minimum_size = Vector2(758, 152)
-size_flags_horizontal = 4
 pivot_offset = Vector2(379, 76)
 expand = true
 ignore_texture_size = true
 texture_normal = ExtResource("3")
 
-[node name="ContinueBtn" type="TextureButton" parent="Center/ButtonContainer"]
+[node name="ContinueBtn" type="TextureButton" parent="MenuLayer/CenterContainer/MarginContainer/ButtonContainer"]
+unique_name_in_owner = true
 layout_mode = 2
 custom_minimum_size = Vector2(758, 152)
-size_flags_horizontal = 4
 pivot_offset = Vector2(379, 76)
 expand = true
 ignore_texture_size = true
 visible = false
 texture_normal = ExtResource("4")
 
-[node name="OptionsBtn" type="TextureButton" parent="Center/ButtonContainer"]
+[node name="OptionsBtn" type="TextureButton" parent="MenuLayer/CenterContainer/MarginContainer/ButtonContainer"]
+unique_name_in_owner = true
 layout_mode = 2
 custom_minimum_size = Vector2(758, 152)
-size_flags_horizontal = 4
 pivot_offset = Vector2(379, 76)
 expand = true
 ignore_texture_size = true
 texture_normal = ExtResource("5")
 
-[node name="CreditsBtn" type="TextureButton" parent="Center/ButtonContainer"]
+[node name="CreditsBtn" type="TextureButton" parent="MenuLayer/CenterContainer/MarginContainer/ButtonContainer"]
+unique_name_in_owner = true
 layout_mode = 2
 custom_minimum_size = Vector2(758, 152)
-size_flags_horizontal = 4
 pivot_offset = Vector2(379, 76)
 expand = true
 ignore_texture_size = true
 texture_normal = ExtResource("6")
 
-[node name="ExitBtn" type="TextureButton" parent="Center/ButtonContainer"]
+[node name="ExitBtn" type="TextureButton" parent="MenuLayer/CenterContainer/MarginContainer/ButtonContainer"]
+unique_name_in_owner = true
 layout_mode = 2
 custom_minimum_size = Vector2(758, 152)
-size_flags_horizontal = 4
 pivot_offset = Vector2(379, 76)
 expand = true
 ignore_texture_size = true
 texture_normal = ExtResource("7")
 
+; ── Version stamp — bottom-right corner, outside CanvasLayer ──────────────────
 [node name="VersionLabel" type="Label" parent="."]
 layout_mode = 1
 anchor_left = 1.0
