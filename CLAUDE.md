@@ -16,6 +16,10 @@ Referencja architektoniczna: https://github.com/htdt/godogen.git
 
 ## Strict Rules (Niezmienne zasady)
 
+**Unique Names Fix:** Every time you use `%NodeName` in a script, you MUST ensure the `.tscn` file contains `unique_name_in_owner = true` for that specific node. Without this flag `%NodeName` WILL CRASH at runtime with "Node not found".
+
+**Asset Separation:** Each UI element (banner, button, frame) is a separate file. DO NOT combine them into one TextureRect. Use separate nodes for each asset.
+
 **Asset Integrity:** Nigdy nie łącz osobnych plików .png w jeden obraz. Każdy baner, przycisk i ramka to osobny Texture w folderze `res://assets/`.
 
 **No Absolute Positioning:** Zakaz używania `position` i `size` w kodzie/scenach. Używaj wyłącznie: `CenterContainer`, `VBoxContainer`, `HBoxContainer`, `MarginContainer` oraz `GridContainer`.
